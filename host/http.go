@@ -11,12 +11,14 @@ import (
 
 	"github.com/flynn/flynn/Godeps/_workspace/src/github.com/julienschmidt/httprouter"
 	"github.com/flynn/flynn/host/types"
+	"github.com/flynn/flynn/host/volume"
+	"github.com/flynn/flynn/host/volume/api"
 	"github.com/flynn/flynn/pkg/httphelper"
 	"github.com/flynn/flynn/pkg/shutdown"
 	"github.com/flynn/flynn/pkg/sse"
 )
 
-func serveHTTP(host *Host, attach *attachHandler, sh *shutdown.Handler) (*httprouter.Router, error) {
+func serveHTTP(host *Host, attach *attachHandler, vman *volume.Manager, sh *shutdown.Handler) (*httprouter.Router, error) {
 	l, err := net.Listen("tcp", ":1113")
 	if err != nil {
 		return nil, err
@@ -24,10 +26,19 @@ func serveHTTP(host *Host, attach *attachHandler, sh *shutdown.Handler) (*httpro
 	sh.BeforeExit(func() { l.Close() })
 
 	r := httprouter.New()
+
+	// host core api
 	r.POST("/attach", attach.ServeHTTP)
 	r.GET("/host/jobs", hostMiddleware(host, listJobs))
 	r.GET("/host/jobs/:id", hostMiddleware(host, getJob))
 	r.DELETE("/host/jobs/:id", hostMiddleware(host, stopJob))
+
+	// host volumes api
+	r.POST("/volume/provider", volumeMiddleware(vman, volumeapi.CreateProvider))
+	r.POST("/volume/provider/:provider_id/newVolume", volumeMiddleware(vman, volumeapi.Create))
+	r.PUT("/volume/x/:id/snapshot", volumeMiddleware(vman, volumeapi.Snapshot))
+	//r.GET("/volume/x/:id/inspect", volumeMiddleware(vman, volumeapi.Inspect)) // very TODO
+
 	go http.Serve(l, r)
 
 	return r, nil
@@ -88,6 +99,15 @@ type HostHandle func(*Host, http.ResponseWriter, *http.Request, httprouter.Param
 func hostMiddleware(host *Host, handle HostHandle) httprouter.Handle {
 	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		handle(host, w, r, ps)
+	}
+}
+
+type volumeHandle func(*volume.Manager, http.ResponseWriter, *http.Request, httprouter.Params)
+
+// Helper function for wrapping a volumeHandle into a httprouter.Handles
+func volumeMiddleware(vman *volume.Manager, handle volumeHandle) httprouter.Handle {
+	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+		handle(vman, w, r, ps)
 	}
 }
 
