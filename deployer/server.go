@@ -121,7 +121,7 @@ func handleJob(job *que.Job) (e error) {
 		for ev := range events {
 			ev.DeploymentID = deployment.ID
 			if err := sendDeploymentEvent(ev); err != nil {
-				log.Fatal(err)
+				log.Print(err)
 			}
 		}
 	}()
@@ -160,7 +160,7 @@ func handleJob(job *que.Job) (e error) {
 		ReleaseID:    deployment.NewReleaseID,
 		Status:       "complete",
 	}); err != nil {
-		log.Fatal(err)
+		log.Print(err)
 	}
 	return nil
 }
